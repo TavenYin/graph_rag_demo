@@ -4,7 +4,7 @@
 
 **Goal:** Make retrieval scores and the key RAG stages observable through structured logs without changing retrieval or answer behavior.
 
-**Architecture:** Add module loggers to RAG and retrieval services. Log stage summaries at INFO and per-result scores at DEBUG. Keep document content, prompts, credentials, and model answers out of logs. Vector retrieval uses configurable cosine distance filtering with a default maximum distance of 0.4.
+**Architecture:** Add module loggers to RAG and retrieval services. Log stage summaries at INFO and per-result scores at DEBUG. Keep document content, prompts, credentials, and model answers out of logs. Vector retrieval uses configurable cosine similarity filtering with a default minimum similarity of 0.6.
 
 **Tech Stack:** Python logging, pytest, PostgreSQL/pgvector integration tests.
 
@@ -26,7 +26,7 @@
 - [x] Add caplog tests for vector distance, full-text score, and RRF final scores.
 - [x] Run the focused tests and observe failures because retrieval currently discards database scores and has no logs.
 - [x] Select score columns in both SQL queries, preserve them in log-only processing, and log per-query retrieval and final RRF summaries.
-- [x] Filter vector rows with configurable cosine distance, defaulting to a maximum distance of 0.4.
+- [x] Filter vector rows with configurable cosine similarity, defaulting to a minimum similarity of 0.6.
 
 ### Task 2: Add expansion and RAG stage logs
 

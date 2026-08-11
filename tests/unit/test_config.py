@@ -25,14 +25,14 @@ def test_non_1024_embedding_dimension_is_rejected(monkeypatch):
         Settings.from_env().validate()
 
 
-def test_vector_max_distance_defaults_to_point_four(monkeypatch):
-    monkeypatch.delenv("VECTOR_MAX_DISTANCE", raising=False)
+def test_vector_min_similarity_defaults_to_point_six(monkeypatch):
+    monkeypatch.delenv("VECTOR_MIN_SIMILARITY", raising=False)
 
-    assert Settings.from_env().vector_max_distance == pytest.approx(0.4)
+    assert Settings.from_env().vector_min_similarity == pytest.approx(0.6)
 
 
-def test_vector_max_distance_must_be_within_cosine_distance_range(monkeypatch):
-    monkeypatch.setenv("VECTOR_MAX_DISTANCE", "2.1")
+def test_vector_min_similarity_must_be_within_cosine_similarity_range(monkeypatch):
+    monkeypatch.setenv("VECTOR_MIN_SIMILARITY", "1.1")
 
-    with pytest.raises(ValueError, match="VECTOR_MAX_DISTANCE"):
+    with pytest.raises(ValueError, match="VECTOR_MIN_SIMILARITY"):
         Settings.from_env().validate()

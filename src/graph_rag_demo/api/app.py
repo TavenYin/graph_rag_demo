@@ -64,7 +64,7 @@ def _build_services(settings: Settings) -> ApplicationServices:
     )
     retrieval_service = RetrievalService(
         database=database,
-        max_vector_distance=settings.vector_max_distance,
+        min_vector_similarity=settings.vector_min_similarity,
     )
     return ApplicationServices(
         database=database,

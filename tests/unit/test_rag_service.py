@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import pytest
 import tiktoken
 
+from graph_rag_demo.models.chat import ChatMessage
 from graph_rag_demo.models.generation import AnswerPayload
 from graph_rag_demo.models.retrieval import SearchResult
 from graph_rag_demo.services.rag import RAGService
@@ -81,7 +82,10 @@ async def test_ask_keeps_original_question_first_and_uses_only_three_normalized_
         retrieval_service=retrieval,
     )
 
-    await service.ask("Graph RAG", chat_context="recent chat")
+    await service.ask(
+        "Graph RAG",
+        chat_context=[ChatMessage(role="user", content="recent chat")],
+    )
 
     assert embedding.requests == [["Graph RAG", "实体检索", "关系查询", "第四条"]]
     assert retrieval.requests == [
@@ -89,8 +93,9 @@ async def test_ask_keeps_original_question_first_and_uses_only_three_normalized_
     ]
     assert llm.calls[0][1] is True
     assert llm.calls[0][0][0]["role"] == "system"
-    assert "retrieval" in llm.calls[0][0][0]["content"].lower()
-    assert llm.calls[0][0][1]["content"] == "Graph RAG\n\nConversation context:\nrecent chat"
+    assert "检索" in llm.calls[0][0][0]["content"]
+    assert llm.calls[0][0][1] == {"role": "user", "content": "recent chat"}
+    assert llm.calls[0][0][-1] == {"role": "user", "content": "Graph RAG"}
 
 
 @pytest.mark.asyncio
@@ -145,7 +150,7 @@ async def test_ask_builds_context_within_the_token_budget() -> None:
     )
     embedding = FakeEmbeddingClient(vectors=[[0.1]])
     retrieval = FakeRetrievalService(results=[_result(1, short), _result(2, too_large)])
-    budget = 20
+    budget = 40
     service = RAGService(
         llm_client=llm,
         embedding_client=embedding,
@@ -156,10 +161,32 @@ async def test_ask_builds_context_within_the_token_budget() -> None:
     result = await service.ask("question")
 
     context = llm.calls[1][0][1]["content"]
-    assert "[chunk_id: 1]" in context
+    assert "<knowledge>" in context
+    assert '<chunk id="1">' in context
     assert too_large not in context
     assert len(tiktoken.get_encoding("cl100k_base").encode(context)) <= budget
     assert result.used_chunk_ids == [1]
+
+
+@pytest.mark.asyncio
+async def test_ask_escapes_special_characters_in_knowledge_xml() -> None:
+    llm = FakeLLM(
+        expansions=[],
+        answer_payload=AnswerPayload(answer="grounded", used_chunk_ids=[1]),
+    )
+    service = RAGService(
+        llm_client=llm,
+        embedding_client=FakeEmbeddingClient(vectors=[[0.1]]),
+        retrieval_service=FakeRetrievalService(
+            results=[_result(1, "<unsafe>& \"quoted\"")]
+        ),
+        context_token_budget=100,
+    )
+
+    await service.ask("question")
+
+    answer_content = llm.calls[1][0][-1]["content"]
+    assert "&lt;unsafe&gt;&amp; \"quoted\"" in answer_content
 
 
 @pytest.mark.asyncio

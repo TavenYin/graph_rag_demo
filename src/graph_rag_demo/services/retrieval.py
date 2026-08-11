@@ -20,10 +20,13 @@ RRF_K = 60
 
 _VECTOR_SEARCH = text(
     """
-    SELECT id, content, embedding <=> CAST(:embedding AS vector) AS distance
+    SELECT
+        id,
+        content,
+        1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
     FROM kb_chunk
-    WHERE embedding <=> CAST(:embedding AS vector) < :max_distance
-    ORDER BY embedding <=> CAST(:embedding AS vector), id
+    WHERE 1 - (embedding <=> CAST(:embedding AS vector)) > :min_similarity
+    ORDER BY similarity DESC, id
     LIMIT :top_k
     """
 )
@@ -103,7 +106,7 @@ class RetrievalService:
         final_top_n: int = 8,
         original_query_weight: float = 2.0,
         expansion_query_weight: float = 1.0,
-        max_vector_distance: float = 0.4,
+        min_vector_similarity: float = 0.6,
     ) -> None:
         if per_retriever_top_k <= 0:
             raise ValueError("per_retriever_top_k must be positive")
@@ -111,14 +114,14 @@ class RetrievalService:
             raise ValueError("final_top_n must be at least 0")
         if original_query_weight < 0 or expansion_query_weight < 0:
             raise ValueError("retrieval weights must be non-negative")
-        if not 0 < max_vector_distance <= 2:
-            raise ValueError("max_vector_distance must be greater than 0 and at most 2")
+        if not -1 <= min_vector_similarity <= 1:
+            raise ValueError("min_vector_similarity must be between -1 and 1")
         self._database = database
         self._per_retriever_top_k = per_retriever_top_k
         self._final_top_n = final_top_n
         self._original_query_weight = original_query_weight
         self._expansion_query_weight = expansion_query_weight
-        self._max_vector_distance = max_vector_distance
+        self._min_vector_similarity = min_vector_similarity
 
     async def search_all(
         self, queries: Sequence[str], embeddings: Sequence[Sequence[float]]
@@ -130,9 +133,9 @@ class RetrievalService:
             return []
 
         _LOGGER.info(
-            "retrieval_started query_count=%d max_vector_distance=%s",
+            "retrieval_started query_count=%d min_vector_similarity=%s",
             len(queries),
-            self._max_vector_distance,
+            self._min_vector_similarity,
         )
         rank_lists: list[list[RankedChunk]] = []
         weights: list[float] = []
@@ -147,7 +150,7 @@ class RetrievalService:
                     _VECTOR_SEARCH,
                     {
                         "embedding": _vector_literal(embedding),
-                        "max_distance": self._max_vector_distance,
+                        "min_similarity": self._min_vector_similarity,
                         "top_k": self._per_retriever_top_k,
                     },
                 )
@@ -158,14 +161,14 @@ class RetrievalService:
                     len(vector_rows),
                 )
                 for rank, row in enumerate(vector_rows, start=1):
-                    distance = float(row["distance"])
+                    similarity = float(row["similarity"])
                     _LOGGER.debug(
                         "vector_retrieval_result query_index=%d rank=%d chunk_id=%s distance=%s similarity=%s",
                         query_index,
                         rank,
                         row["id"],
-                        distance,
-                        1 - distance,
+                        1 - similarity,
+                        similarity,
                     )
                 rank_lists.append(
                     _ranked_chunks(

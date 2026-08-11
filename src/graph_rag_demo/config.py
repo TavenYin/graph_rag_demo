@@ -49,7 +49,7 @@ class Settings:
     embedding_dimensions: int
     chunk_size: int
     chunk_overlap: int
-    vector_max_distance: float
+    vector_min_similarity: float
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -69,7 +69,7 @@ class Settings:
             embedding_dimensions=_read_int("EMBEDDING_DIMENSIONS", 1024),
             chunk_size=_read_int("CHUNK_SIZE", 400),
             chunk_overlap=_read_int("CHUNK_OVERLAP", 80),
-            vector_max_distance=_read_float("VECTOR_MAX_DISTANCE", 0.4),
+            vector_min_similarity=_read_float("VECTOR_MIN_SIMILARITY", 0.6),
         )
 
     def validate(self) -> None:
@@ -81,5 +81,5 @@ class Settings:
             raise ValueError("CHUNK_SIZE must be positive")
         if not 0 <= self.chunk_overlap < self.chunk_size:
             raise ValueError("CHUNK_OVERLAP must be at least 0 and less than CHUNK_SIZE")
-        if not 0 < self.vector_max_distance <= 2:
-            raise ValueError("VECTOR_MAX_DISTANCE must be greater than 0 and at most 2")
+        if not -1 <= self.vector_min_similarity <= 1:
+            raise ValueError("VECTOR_MIN_SIMILARITY must be between -1 and 1")

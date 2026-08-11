@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from graph_rag_demo.models.chat import ChatMessage
 from graph_rag_demo.text import clean_text
 
 if TYPE_CHECKING:
@@ -47,7 +48,7 @@ class DocumentResponse(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
-    chat_context: str = ""
+    chat_context: list[ChatMessage] = Field(default_factory=list, max_length=20)
 
     @field_validator("question")
     @classmethod

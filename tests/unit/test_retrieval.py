@@ -125,9 +125,9 @@ async def test_search_all_collects_all_lists_before_one_global_fusion(monkeypatc
     from graph_rag_demo.services import retrieval
 
     responses = [
-        [{"id": 1, "content": "original vector", "distance": 0.25}],
+        [{"id": 1, "content": "original vector", "similarity": 0.75}],
         [{"id": 2, "content": "original fulltext", "score": 0.8}],
-        [{"id": 3, "content": "expansion vector", "distance": 0.35}],
+        [{"id": 3, "content": "expansion vector", "similarity": 0.65}],
         [{"id": 4, "content": "expansion fulltext", "score": 0.6}],
     ]
     service = RetrievalService(database=_Database(responses), per_retriever_top_k=5, final_top_n=5)
@@ -160,7 +160,7 @@ async def test_search_all_logs_vector_and_fulltext_scores(caplog) -> None:
     service = RetrievalService(
         database=_Database(
             [
-                [{"id": 1, "content": "vector", "distance": 0.25}],
+                [{"id": 1, "content": "vector", "similarity": 0.75}],
                 [{"id": 2, "content": "fulltext", "score": 0.8}],
             ]
         ),
@@ -171,18 +171,18 @@ async def test_search_all_logs_vector_and_fulltext_scores(caplog) -> None:
     await service.search_all(queries=["question"], embeddings=[[0.1, 0.2]])
 
     assert "vector_retrieval_result" in caplog.text
-    assert "distance=0.25" in caplog.text
     assert "similarity=0.75" in caplog.text
+    assert "distance=0.25" in caplog.text
     assert "fulltext_retrieval_result" in caplog.text
     assert "score=0.8" in caplog.text
     assert "rrf_fusion_complete" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_search_all_filters_vector_results_by_max_distance() -> None:
+async def test_search_all_filters_vector_results_by_min_similarity() -> None:
     database = _Database(
         [
-            [{"id": 1, "content": "vector", "distance": 0.25}],
+            [{"id": 1, "content": "vector", "similarity": 0.75}],
             [{"id": 2, "content": "fulltext", "score": 0.8}],
         ]
     )
@@ -190,11 +190,11 @@ async def test_search_all_filters_vector_results_by_max_distance() -> None:
         database=database,
         per_retriever_top_k=5,
         final_top_n=5,
-        max_vector_distance=0.4,
+        min_vector_similarity=0.6,
     )
 
     await service.search_all(queries=["question"], embeddings=[[0.1, 0.2]])
 
     vector_statement, vector_params = database.executions[0]
-    assert ":max_distance" in vector_statement.text
-    assert vector_params["max_distance"] == 0.4
+    assert ":min_similarity" in vector_statement.text
+    assert vector_params["min_similarity"] == 0.6

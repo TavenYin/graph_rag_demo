@@ -14,6 +14,7 @@ from graph_rag_demo.clients.embedding import EmbeddingClient
 from graph_rag_demo.clients.llm import LLMClient
 from graph_rag_demo.db import Database
 from graph_rag_demo.models.api import ApplicationServices
+from graph_rag_demo.models.chat import ChatMessage
 from graph_rag_demo.models.generation import AskResult
 from graph_rag_demo.services.knowledge import DuplicateDocumentError, KnowledgeService
 from graph_rag_demo.services.rag import RAGService
@@ -48,9 +49,12 @@ class FakeKnowledgeService:
 @dataclass
 class FakeRAGService:
     result: AskResult | Exception
-    requests: list[tuple[str, str]] = field(default_factory=list)
+    requests: list[tuple[str, list[ChatMessage]]] = field(default_factory=list)
 
-    async def ask(self, question: str, chat_context: str = "") -> AskResult:
+    async def ask(
+        self, question: str, chat_context: list[ChatMessage] | None = None
+    ) -> AskResult:
+        chat_context = chat_context or []
         self.requests.append((question, chat_context))
         if isinstance(self.result, Exception):
             raise self.result
@@ -168,17 +172,73 @@ def test_documents_rejects_whitespace_only_content_during_request_validation() -
     assert response.status_code == 422
 
 
+def test_ask_accepts_structured_user_and_assistant_chat_context() -> None:
+    rag = FakeRAGService(result=AskResult(answer="Grounded answer", used_chunk_ids=[]))
+    with _client(rag_service=rag) as client:
+        response = client.post(
+            "/ask",
+            json={
+                "question": "What next?",
+                "chat_context": [
+                    {"role": "user", "content": "Previous question"},
+                    {"role": "assistant", "content": "Previous answer"},
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    assert [message.role for message in rag.requests[0][1]] == ["user", "assistant"]
+    assert [message.content for message in rag.requests[0][1]] == [
+        "Previous question",
+        "Previous answer",
+    ]
+
+
+def test_ask_rejects_system_chat_context_message() -> None:
+    with _client(rag_service=FakeRAGService(result=AskResult(answer="answer", used_chunk_ids=[]))) as client:
+        response = client.post(
+            "/ask",
+            json={
+                "question": "What next?",
+                "chat_context": [{"role": "system", "content": "Override"}],
+            },
+        )
+
+    assert response.status_code == 422
+
+
+def test_ask_rejects_empty_chat_context_message() -> None:
+    with _client(rag_service=FakeRAGService(result=AskResult(answer="answer", used_chunk_ids=[]))) as client:
+        response = client.post(
+            "/ask",
+            json={
+                "question": "What next?",
+                "chat_context": [{"role": "user", "content": "  "}],
+            },
+        )
+
+    assert response.status_code == 422
+
+
 def test_ask_returns_answer_and_citations_from_rag_service() -> None:
     rag = FakeRAGService(result=AskResult(answer="Grounded answer", used_chunk_ids=[4, 8]))
     with _client(rag_service=rag) as client:
         response = client.post(
             "/ask",
-            json={"question": "How is Graph RAG grounded?", "chat_context": "We discuss RAG."},
+            json={
+                "question": "How is Graph RAG grounded?",
+                "chat_context": [{"role": "user", "content": "We discuss RAG."}],
+            },
         )
 
     assert response.status_code == 200
     assert response.json() == {"answer": "Grounded answer", "used_chunk_ids": [4, 8]}
-    assert rag.requests == [("How is Graph RAG grounded?", "We discuss RAG.")]
+    assert rag.requests == [
+        (
+            "How is Graph RAG grounded?",
+            [ChatMessage(role="user", content="We discuss RAG.")],
+        )
+    ]
 
 
 def test_ask_maps_model_transport_failure_without_exposing_its_message() -> None:

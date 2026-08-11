@@ -86,11 +86,11 @@ RUN_INTEGRATION_TESTS=1 uv run python -m pytest tests/integration -v
 项目使用 Python 标准 logging 记录 RAG 关键阶段。日志默认遵循应用的 logging 配置：
 
 - INFO：扩写开始/完成或回退、检索完成数量、RRF 开始/完成数量、回答完成引用数量。
-- DEBUG：每条向量结果的 distance 和 similarity、每条全文结果的 score、每条最终 RRF 结果的 score。
+- DEBUG：每条向量结果的 similarity 和 distance、每条全文结果的 score、每条最终 RRF 结果的 score。
 
 向量距离越小越接近；全文检索分数越高越匹配；RRF 分数越高最终排序越靠前。日志只记录 chunk ID、rank、数量和分数，不记录完整文档正文、提示词、答案或密钥。
 
-向量检索使用 pgvector 的余弦距离，默认只保留 distance 小于 0.4 的结果，这等价于余弦相似度大于 0.6。阈值由 VECTOR_MAX_DISTANCE 配置。
+向量检索显式计算 pgvector 的余弦相似度，默认只保留 similarity 大于 0.6 的结果。距离仅作为观测日志中的派生值，阈值由 VECTOR_MIN_SIMILARITY 配置。
 
 ## 设计原则
 
