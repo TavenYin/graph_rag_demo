@@ -63,7 +63,7 @@ def register_routes(app: FastAPI) -> None:
         if rag_service is None:
             raise HTTPException(status_code=503, detail="Model service is not configured")
         try:
-            result = await rag_service.ask(payload.question, payload.chat_context)
+            result = await rag_service.answer(payload.question, payload.chat_context)
         except (httpx.HTTPError, ModelResponseError, OSError, SQLAlchemyError):
             _LOGGER.warning("RAG dependency failed")
             raise HTTPException(status_code=503, detail="Model service unavailable") from None

@@ -5,26 +5,27 @@ from graph_rag_demo.chunking import split_text
 from graph_rag_demo.models.chunk import TokenChunk
 
 
-def test_split_text_uses_exact_token_sized_chunks():
-    text = "one two three four five six seven eight nine ten"
+def test_split_text_prefers_chinese_sentence_boundaries_within_token_budget():
+    text = "第一句。第二句。第三句。第四句。"
 
-    chunks = split_text(text, chunk_size=3, chunk_overlap=0)
+    chunks = split_text(text, chunk_size=8, chunk_overlap=0)
 
     assert [chunk.index for chunk in chunks] == [0, 1, 2, 3]
-    assert [chunk.token_count for chunk in chunks] == [3, 3, 3, 1]
+    assert [chunk.content for chunk in chunks] == ["第一句。", "第二句。", "第三句。", "第四句。"]
+    assert all(chunk.token_count <= 8 for chunk in chunks)
     assert all(isinstance(chunk, TokenChunk) for chunk in chunks)
 
 
-def test_split_text_preserves_requested_token_overlap():
+def test_split_text_records_token_counts_under_the_requested_budget():
     encoding = tiktoken.get_encoding("cl100k_base")
-    text = "one two three four five six seven eight nine ten"
+    text = "第一段内容。\n\n第二段内容。\n\n第三段内容。"
 
-    chunks = split_text(text, chunk_size=4, chunk_overlap=2)
+    chunks = split_text(text, chunk_size=10, chunk_overlap=2)
 
-    encoded_chunks = [encoding.encode(chunk.content) for chunk in chunks]
-    assert [chunk.token_count for chunk in chunks] == [len(tokens) for tokens in encoded_chunks]
-    for previous, current in zip(encoded_chunks, encoded_chunks[1:]):
-        assert current[:2] == previous[-2:]
+    assert [chunk.token_count for chunk in chunks] == [
+        len(encoding.encode(chunk.content)) for chunk in chunks
+    ]
+    assert all(chunk.token_count <= 10 for chunk in chunks)
 
 
 def test_split_text_returns_no_chunks_for_empty_input():

@@ -1,65 +1,42 @@
-"""Deterministic token-based text chunking."""
+"""Chinese-aware recursive text chunking measured with tiktoken."""
 
-from bisect import bisect_right
+from __future__ import annotations
 
 import tiktoken
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from graph_rag_demo.models.chunk import TokenChunk
 
 
 _ENCODING = tiktoken.get_encoding("cl100k_base")
-
-
-def _unicode_boundaries(tokens: list[int]) -> list[int]:
-    _, offsets = _ENCODING.decode_with_offsets(tokens)
-    boundaries = [0]
-    boundaries.extend(
-        index
-        for index in range(1, len(tokens))
-        if offsets[index] != offsets[index - 1]
-    )
-    boundaries.append(len(tokens))
-    return boundaries
-
-
-def _boundary_at_or_before(boundaries: list[int], token_index: int) -> int:
-    return boundaries[bisect_right(boundaries, token_index) - 1]
+_SEPARATORS = ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
 
 
 def split_text(text: str, chunk_size: int, chunk_overlap: int) -> list[TokenChunk]:
-    """Split text into fixed-size tiktoken chunks with token overlap."""
+    """Split text on preferred Chinese boundaries within a token budget."""
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
     if not 0 <= chunk_overlap < chunk_size:
         raise ValueError("chunk_overlap must be at least 0 and less than chunk_size")
-
-    tokens = _ENCODING.encode(text)
-    if not tokens:
+    if not text:
         return []
 
-    boundaries = _unicode_boundaries(tokens)
-    chunks: list[TokenChunk] = []
-    start = 0
-    while start < len(tokens):
-        end = _boundary_at_or_before(boundaries, start + chunk_size)
-        if end == start:
-            end = boundaries[bisect_right(boundaries, start)]
-
-        chunk_tokens = tokens[start:end]
-        content = _ENCODING.decode(chunk_tokens)
-        chunks.append(
-            TokenChunk(
-                content=content,
-                token_count=len(_ENCODING.encode(content)),
-                index=len(chunks),
-            )
+    splitter = RecursiveCharacterTextSplitter(
+        separators=_SEPARATORS,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=_token_count,
+        keep_separator="end",
+    )
+    return [
+        TokenChunk(
+            content=content,
+            token_count=_token_count(content),
+            index=index,
         )
-        if end == len(tokens):
-            break
+        for index, content in enumerate(splitter.split_text(text))
+    ]
 
-        next_start = _boundary_at_or_before(boundaries, end - chunk_overlap)
-        if next_start <= start:
-            next_start = boundaries[bisect_right(boundaries, start)]
-        start = next_start
 
-    return chunks
+def _token_count(text: str) -> int:
+    return len(_ENCODING.encode(text))

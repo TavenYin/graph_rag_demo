@@ -51,7 +51,7 @@ class FakeRAGService:
     result: AskResult | Exception
     requests: list[tuple[str, list[ChatMessage]]] = field(default_factory=list)
 
-    async def ask(
+    async def answer(
         self, question: str, chat_context: list[ChatMessage] | None = None
     ) -> AskResult:
         chat_context = chat_context or []

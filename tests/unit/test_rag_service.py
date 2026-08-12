@@ -69,7 +69,7 @@ def _result(chunk_id: int, content: str) -> SearchResult:
 
 
 @pytest.mark.asyncio
-async def test_ask_keeps_original_question_first_and_uses_only_three_normalized_expansions() -> None:
+async def test_answer_keeps_original_question_first_and_uses_only_three_normalized_expansions() -> None:
     llm = FakeLLM(
         expansions=["  Graph RAG  ", "graph   rag", "", "实体检索", "关系查询", "第四条"],
         answer_payload=AnswerPayload(answer="answer", used_chunk_ids=[]),
@@ -82,7 +82,7 @@ async def test_ask_keeps_original_question_first_and_uses_only_three_normalized_
         retrieval_service=retrieval,
     )
 
-    await service.ask(
+    await service.answer(
         "Graph RAG",
         chat_context=[ChatMessage(role="user", content="recent chat")],
     )
@@ -99,7 +99,7 @@ async def test_ask_keeps_original_question_first_and_uses_only_three_normalized_
 
 
 @pytest.mark.asyncio
-async def test_ask_falls_back_to_original_question_when_expansion_fails() -> None:
+async def test_answer_falls_back_to_original_question_when_expansion_fails() -> None:
     llm = FakeLLM(
         expansions=ValueError("malformed model response"),
         answer_payload=AnswerPayload(answer="answer", used_chunk_ids=[]),
@@ -112,7 +112,7 @@ async def test_ask_falls_back_to_original_question_when_expansion_fails() -> Non
         retrieval_service=retrieval,
     )
 
-    result = await service.ask("original question")
+    result = await service.answer("original question")
 
     assert result.answer == "answer"
     assert embedding.requests == [["original question"]]
@@ -120,7 +120,7 @@ async def test_ask_falls_back_to_original_question_when_expansion_fails() -> Non
 
 
 @pytest.mark.asyncio
-async def test_ask_logs_expansion_and_retrieval_stages(caplog) -> None:
+async def test_answer_logs_expansion_and_retrieval_stages(caplog) -> None:
     caplog.set_level("DEBUG", logger="graph_rag_demo.services.rag")
     llm = FakeLLM(
         expansions=["expanded"],
@@ -132,7 +132,7 @@ async def test_ask_logs_expansion_and_retrieval_stages(caplog) -> None:
         retrieval_service=FakeRetrievalService(results=[]),
     )
 
-    await service.ask("question")
+    await service.answer("question")
 
     assert "rag_expansion_started" in caplog.text
     assert "rag_expansion_completed" in caplog.text
@@ -141,7 +141,7 @@ async def test_ask_logs_expansion_and_retrieval_stages(caplog) -> None:
 
 
 @pytest.mark.asyncio
-async def test_ask_builds_context_within_the_token_budget() -> None:
+async def test_answer_builds_context_within_the_token_budget() -> None:
     short = "A short source."
     too_large = "very long evidence " * 40
     llm = FakeLLM(
@@ -158,7 +158,7 @@ async def test_ask_builds_context_within_the_token_budget() -> None:
         context_token_budget=budget,
     )
 
-    result = await service.ask("question")
+    result = await service.answer("question")
 
     context = llm.calls[1][0][1]["content"]
     assert "<knowledge>" in context
@@ -169,7 +169,7 @@ async def test_ask_builds_context_within_the_token_budget() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ask_escapes_special_characters_in_knowledge_xml() -> None:
+async def test_answer_escapes_special_characters_in_knowledge_xml() -> None:
     llm = FakeLLM(
         expansions=[],
         answer_payload=AnswerPayload(answer="grounded", used_chunk_ids=[1]),
@@ -183,14 +183,14 @@ async def test_ask_escapes_special_characters_in_knowledge_xml() -> None:
         context_token_budget=100,
     )
 
-    await service.ask("question")
+    await service.answer("question")
 
     answer_content = llm.calls[1][0][-1]["content"]
     assert "&lt;unsafe&gt;&amp; \"quoted\"" in answer_content
 
 
 @pytest.mark.asyncio
-async def test_ask_filters_model_citations_that_are_not_in_the_context() -> None:
+async def test_answer_filters_model_citations_that_are_not_in_the_context() -> None:
     llm = FakeLLM(
         expansions=[],
         answer_payload=AnswerPayload(answer="grounded", used_chunk_ids=[2, 99, 2, 1]),
@@ -204,7 +204,7 @@ async def test_ask_filters_model_citations_that_are_not_in_the_context() -> None
         context_token_budget=100,
     )
 
-    result = await service.ask("question")
+    result = await service.answer("question")
 
     assert result.answer == "grounded"
     assert result.used_chunk_ids == [2, 1]

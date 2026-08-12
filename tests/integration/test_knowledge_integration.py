@@ -36,6 +36,7 @@ async def database() -> AsyncIterator[object]:
 @pytest.mark.asyncio
 async def test_upload_writes_document_and_actual_token_counts(database) -> None:
     from graph_rag_demo.services.knowledge import KnowledgeService
+    from graph_rag_demo.chunking import split_text
 
     service = KnowledgeService(
         database=database,
@@ -63,4 +64,7 @@ async def test_upload_writes_document_and_actual_token_counts(database) -> None:
                 {"document_id": document_id},
             )
 
-    assert rows == [4, 3]
+    assert rows == [
+        chunk.token_count
+        for chunk in split_text("one two three four five six", 4, 1)
+    ]

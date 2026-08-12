@@ -7,6 +7,7 @@ import json
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from graph_rag_demo.chunking import split_text
 from graph_rag_demo.services.knowledge import DuplicateDocumentError, KnowledgeService
 
 
@@ -153,8 +154,13 @@ async def test_upload_persists_token_counts_for_all_chunks_in_one_embedding_batc
     assert document_id == 1
     assert len(embedding_client.requests) == 1
     assert embedding_client.requests[0] == [chunk["content"] for chunk in database.chunks]
-    assert [chunk["token_count"] for chunk in database.chunks] == [3, 3, 2]
-    assert [chunk["chunk_index"] for chunk in database.chunks] == [0, 1, 2]
+    expected_chunks = split_text("one two three four five six", 3, 1)
+    assert [chunk["token_count"] for chunk in database.chunks] == [
+        chunk.token_count for chunk in expected_chunks
+    ]
+    assert [chunk["chunk_index"] for chunk in database.chunks] == [
+        chunk.index for chunk in expected_chunks
+    ]
     assert all(chunk["document_id"] == document_id for chunk in database.chunks)
     assert all(chunk["metadata"] == {"source": "unit-test"} for chunk in database.chunks)
     assert database.transactions_started == 1

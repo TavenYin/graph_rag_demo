@@ -6,7 +6,7 @@
 
 | 概念 | 本项目中的位置 |
 | --- | --- |
-| Token 分块与重叠 | `chunking.py`、`services/knowledge.py` |
+| 中文递归 Token 分块 | `chunking.py`、`services/knowledge.py` |
 | 原子入库 | `services/knowledge.py` 的“先全部 Embedding，后单事务写库” |
 | 混合检索 | `services/retrieval.py` 的 pgvector 与 PostgreSQL FTS |
 | 查询扩写 | `services/rag.py`，业务自行构造消息并保留原问题、最多三条变体 |
@@ -28,7 +28,7 @@ flowchart TD
 
 `api/app.py` 只创建应用、管理生命周期并组装服务；`api/routes.py` 只注册 HTTP 端点。请求/响应模型位于 `models/api.py`，外部模型调用位于 `clients/`，业务编排位于 `services/`。
 
-`LLMClient.complete(messages)` 是通用模型调用边界，不固定问题和上下文的模板。扩写和回答的 system/user 提示词，以及各自 JSON 响应的校验，都由 `services/rag.py` 负责。
+`LLMClient.complete(messages)` 是通用模型调用边界，不固定问题和上下文的模板。扩写和回答的 system/user 提示词由 `services/prompts.py` 构造；模型 JSON 使用 `models/generation.py` 的 Pydantic 模型校验，RAG 业务规则仍由 `services/rag.py` 负责。
 
 ## 快速开始
 
@@ -72,7 +72,7 @@ curl -X POST http://127.0.0.1:8000/ask \
 
 ## 本地数据与测试
 
-Compose 首次启动会执行 `scripts/init_db.sql`，建立 `kb_document` 和 `kb_chunk`，并启用 pgvector。`token_count` 使用 `tiktoken` 的 `cl100k_base` 编码；它是统一、可复现的分块与上下文估算口径，不等同于 Qwen 的精确计费 token。
+Compose 首次启动会执行 `scripts/init_db.sql`，建立 `kb_document` 和 `kb_chunk`，并启用 pgvector。文本优先按段落、换行和中文标点递归分块，`token_count` 使用 `tiktoken` 的 `cl100k_base` 编码；它是统一、可复现的分块与上下文估算口径，不等同于 Qwen 的精确计费 token。
 
 ```bash
 uv run python -m pytest tests/unit -v
