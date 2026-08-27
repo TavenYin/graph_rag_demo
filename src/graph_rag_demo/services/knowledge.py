@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 from sqlalchemy import text
@@ -64,7 +65,7 @@ class KnowledgeService:
         metadata: dict[str, Any] | None = None,
     ) -> int:
         """Clean, embed, and atomically save a document and its token chunks."""
-        cleaned_content = clean_text(content)
+        cleaned_content = _normalize_markdown(content)
         if not cleaned_content:
             raise ValueError("content must contain text after cleaning")
 
@@ -82,7 +83,7 @@ class KnowledgeService:
                 "token_count": chunk.token_count,
                 "fts_tokens": tokenize_for_fts(chunk.content),
                 "embedding": _vector_literal(embedding),
-                "metadata": metadata_json,
+                "metadata": json.dumps({**(metadata or {}), "chunk": chunk.metadata}, ensure_ascii=False),
             }
             for chunk, embedding in zip(chunks, embeddings, strict=True)
         ]
@@ -107,3 +108,20 @@ def _vector_literal(vector: list[float]) -> str:
     if any(not isinstance(value, (int, float)) or isinstance(value, bool) for value in vector):
         raise ValueError("embedding values must be numeric")
     return "[" + ",".join(str(float(value)) for value in vector) + "]"
+
+
+def _normalize_markdown(content: str) -> str:
+    """Normalize line endings and unsafe characters without changing Markdown indentation."""
+    if not isinstance(content, str):
+        raise TypeError("content must be a string")
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    if not _contains_markdown_structure(normalized):
+        return clean_text(normalized)
+    return normalized.strip()
+
+
+_MARKDOWN_STRUCTURE = re.compile(r"(?m)^(#{1,6}\s|[-*+]\s|\d+\.\s|>|```|\|.*\|$)")
+
+
+def _contains_markdown_structure(content: str) -> bool:
+    return bool(_MARKDOWN_STRUCTURE.search(content))

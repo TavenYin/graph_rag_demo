@@ -1,8 +1,4 @@
-from dataclasses import dataclass
+from graph_rag_demo.chunking.models import DocumentChunk
 
 
-@dataclass(frozen=True)
-class TokenChunk:
-    content: str
-    token_count: int
-    index: int
+TokenChunk = DocumentChunk

@@ -9,15 +9,20 @@ from fastapi import FastAPI, HTTPException, Request, status
 from sqlalchemy.exc import SQLAlchemyError
 
 from graph_rag_demo.clients.embedding import ModelResponseError
+from graph_rag_demo.chunking import split_text
+from graph_rag_demo.config import Settings
 from graph_rag_demo.models.api import (
     ApplicationServices,
     AskRequest,
     AskResponse,
+    ChunkDebugRequest,
+    ChunkDebugResponse,
+    ChunkItem,
     DocumentRequest,
     DocumentResponse,
     HealthResponse,
 )
-from graph_rag_demo.services.knowledge import DuplicateDocumentError
+from graph_rag_demo.services.knowledge import DuplicateDocumentError, _normalize_markdown
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +61,39 @@ def register_routes(app: FastAPI) -> None:
             _LOGGER.exception("Document upload failed")
             raise HTTPException(status_code=500, detail="Document upload failed") from None
         return DocumentResponse(document_id=document_id)
+
+    @app.post("/debug/chunk", response_model=ChunkDebugResponse)
+    async def debug_chunk(payload: ChunkDebugRequest) -> ChunkDebugResponse:
+        settings = Settings.from_env()
+        chunk_size = payload.chunk_size or settings.chunk_size
+        chunk_overlap = (
+            payload.chunk_overlap if payload.chunk_overlap is not None else settings.chunk_overlap
+        )
+        if not 0 <= chunk_overlap < chunk_size:
+            raise HTTPException(
+                status_code=422,
+                detail="chunk_overlap must be at least 0 and less than chunk_size",
+            )
+        cleaned_content = _normalize_markdown(payload.content)
+        if not cleaned_content:
+            raise HTTPException(status_code=422, detail="content must contain text after cleaning")
+        try:
+            chunks = split_text(cleaned_content, chunk_size, chunk_overlap)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+        return ChunkDebugResponse(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            chunks=[
+                ChunkItem(
+                    index=chunk.index,
+                    content=chunk.content,
+                    token_count=chunk.token_count,
+                    metadata=dict(chunk.metadata),
+                )
+                for chunk in chunks
+            ],
+        )
 
     @app.post("/ask", response_model=AskResponse)
     async def ask(payload: AskRequest, request: Request) -> AskResponse:

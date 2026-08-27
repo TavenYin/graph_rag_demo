@@ -61,3 +61,29 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     used_chunk_ids: list[int]
+
+
+class ChunkDebugRequest(BaseModel):
+    content: str = Field(min_length=1)
+    chunk_size: int | None = Field(default=None, gt=0)
+    chunk_overlap: int | None = Field(default=None, ge=0)
+
+    @field_validator("content")
+    @classmethod
+    def content_must_contain_text(cls, value: str) -> str:
+        if not clean_text(value):
+            raise ValueError("content must contain text")
+        return value
+
+
+class ChunkItem(BaseModel):
+    index: int
+    content: str
+    token_count: int
+    metadata: dict[str, Any]
+
+
+class ChunkDebugResponse(BaseModel):
+    chunks: list[ChunkItem]
+    chunk_size: int
+    chunk_overlap: int

@@ -162,7 +162,13 @@ async def test_upload_persists_token_counts_for_all_chunks_in_one_embedding_batc
         chunk.index for chunk in expected_chunks
     ]
     assert all(chunk["document_id"] == document_id for chunk in database.chunks)
-    assert all(chunk["metadata"] == {"source": "unit-test"} for chunk in database.chunks)
+    assert all(
+        chunk["metadata"] == {
+            "source": "unit-test",
+            "chunk": {"header_path": [], "h1": None, "h2": None, "h3": None},
+        }
+        for chunk in database.chunks
+    )
     assert database.transactions_started == 1
 
 
@@ -186,3 +192,34 @@ async def test_upload_persists_fts_tokens_created_from_each_chunk(monkeypatch) -
     await service.upload("中文检索", title="FTS")
 
     assert database.chunks[0]["fts_tokens"] == "tokenized:中文检索"
+
+
+@pytest.mark.asyncio
+async def test_upload_embeds_and_persists_heading_enriched_content_with_chunk_metadata() -> None:
+    database = FakeDatabase()
+    embedding_client = FakeEmbeddingClient()
+    service = KnowledgeService(
+        database=database,
+        embedding_client=embedding_client,
+        chunk_size=100,
+        chunk_overlap=0,
+    )
+
+    await service.upload(
+        "# 游戏\n\n## 第二章\n\n获得暗夜之矛。",
+        metadata={"source": "guide"},
+    )
+
+    expected = "# 游戏\n## 第二章\n\n获得暗夜之矛。"
+    assert embedding_client.requests == [[expected]]
+    assert database.chunks[0]["content"] == expected
+    assert database.chunks[0]["fts_tokens"] == expected
+    assert database.chunks[0]["metadata"] == {
+        "source": "guide",
+        "chunk": {
+            "header_path": ["游戏", "第二章"],
+            "h1": "游戏",
+            "h2": "第二章",
+            "h3": None,
+        },
+    }

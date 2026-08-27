@@ -5,6 +5,58 @@ from graph_rag_demo.chunking import split_text
 from graph_rag_demo.models.chunk import TokenChunk
 
 
+def test_split_text_keeps_heading_path_in_content_and_chunk_metadata():
+    chunks = split_text(
+        "# 游戏\n## 第二章\n\n获得暗夜之矛。",
+        chunk_size=100,
+        chunk_overlap=0,
+    )
+
+    assert [chunk.content for chunk in chunks] == [
+        "# 游戏\n## 第二章\n\n获得暗夜之矛。"
+    ]
+    assert chunks[0].token_count == len(tiktoken.get_encoding("cl100k_base").encode("获得暗夜之矛。"))
+    assert chunks[0].metadata == {
+        "header_path": ["游戏", "第二章"],
+        "h1": "游戏",
+        "h2": "第二章",
+        "h3": None,
+    }
+
+
+def test_split_text_keeps_actual_heading_levels_after_a_jump():
+    chunks = split_text("### Deep section\n\n正文", chunk_size=100, chunk_overlap=0)
+
+    assert chunks[0].content == "### Deep section\n\n正文"
+    assert chunks[0].metadata == {
+        "header_path": ["Deep section"],
+        "h1": None,
+        "h2": None,
+        "h3": "Deep section",
+    }
+
+
+def test_split_text_keeps_table_and_code_block_atomic_and_preserves_markdown():
+    text = """# API
+
+| 字段 | 说明 |
+| --- | --- |
+| id | 标识 |
+
+```python
+  print(\"keep indent\")
+```
+"""
+
+    chunks = split_text(text, chunk_size=1, chunk_overlap=0)
+
+    assert [chunk.content for chunk in chunks] == [
+        "# API\n\n| 字段 | 说明 |\n| --- | --- |\n| id | 标识 |",
+        '# API\n\n```python\n  print("keep indent")\n```',
+    ]
+    assert all(chunk.metadata["oversized_block"] for chunk in chunks)
+
+
 def test_split_text_prefers_chinese_sentence_boundaries_within_token_budget():
     text = "第一句。第二句。第三句。第四句。"
 
