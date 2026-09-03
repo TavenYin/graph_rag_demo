@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import json
 from xml.sax.saxutils import escape
 
 from graph_rag_demo.models.chat import ChatMessage
@@ -50,11 +51,24 @@ def build_knowledge_xml(results: Sequence[SearchResult]) -> str:
     if not results:
         return "<knowledge />"
 
-    chunks = [
-        f'  <chunk id="{result.chunk_id}">{escape(result.content)}</chunk>'
-        for result in results
-    ]
+    chunks = [_knowledge_chunk_xml(result) for result in results]
     return "<knowledge>\n" + "\n".join(chunks) + "\n</knowledge>"
+
+
+def _knowledge_chunk_xml(result: SearchResult) -> str:
+    references = result.metadata.get("chunk", {})
+    if isinstance(references, dict):
+        references = references.get("references", [])
+    if not isinstance(references, list) or not references:
+        return f'  <chunk id="{result.chunk_id}">{escape(result.content)}</chunk>'
+
+    references_json = escape(json.dumps(references, ensure_ascii=False))
+    return (
+        f'  <chunk id="{result.chunk_id}">\n'
+        f"    <content>{escape(result.content)}</content>\n"
+        f"    <references>{references_json}</references>\n"
+        "  </chunk>"
+    )
 
 
 def _message_to_dict(message: ChatMessage) -> dict[str, str]:

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -15,6 +15,7 @@ class RankedChunk:
     chunk_id: int
     content: str
     match: SearchMatch
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -23,3 +24,4 @@ class SearchResult:
     content: str
     score: float
     matches: tuple[SearchMatch, ...]
+    metadata: dict[str, object] = field(default_factory=dict)

@@ -8,7 +8,11 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from graph_rag_demo.chunking import split_text
-from graph_rag_demo.services.knowledge import DuplicateDocumentError, KnowledgeService
+from graph_rag_demo.services.knowledge import (
+    DuplicateDocumentError,
+    KnowledgeService,
+    _normalize_markdown,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -114,7 +118,20 @@ async def test_upload_does_not_open_a_database_transaction_when_embedding_fails(
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_equivalent_cleaned_content_as_a_duplicate() -> None:
+async def test_upload_rejects_whitespace_only_content_after_safe_normalization() -> None:
+    service = KnowledgeService(
+        database=FakeDatabase(),
+        embedding_client=FakeEmbeddingClient(),
+        chunk_size=20,
+        chunk_overlap=0,
+    )
+
+    with pytest.raises(ValueError, match="content must contain text after cleaning"):
+        await service.upload("  \t\n  ")
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_equivalent_line_endings_as_a_duplicate() -> None:
     database = FakeDatabase()
     embedding_client = FakeEmbeddingClient()
     service = KnowledgeService(
@@ -124,7 +141,7 @@ async def test_upload_rejects_equivalent_cleaned_content_as_a_duplicate() -> Non
         chunk_overlap=0,
     )
 
-    first_id = await service.upload("  Graph\tRAG\n", title="First")
+    first_id = await service.upload("Graph RAG\r\n", title="First")
 
     with pytest.raises(DuplicateDocumentError):
         await service.upload("Graph RAG", title="Duplicate")
@@ -132,6 +149,28 @@ async def test_upload_rejects_equivalent_cleaned_content_as_a_duplicate() -> Non
     assert first_id == 1
     assert len(database.documents) == 1
     assert database.transactions_started == 2
+
+
+@pytest.mark.asyncio
+async def test_upload_does_not_collapse_meaningful_markdown_whitespace_for_checksum() -> None:
+    database = FakeDatabase()
+    service = KnowledgeService(
+        database=database,
+        embedding_client=FakeEmbeddingClient(),
+        chunk_size=20,
+        chunk_overlap=0,
+    )
+
+    first_id = await service.upload("Graph\tRAG", title="With tab")
+    second_id = await service.upload("Graph RAG", title="With space")
+
+    assert (first_id, second_id) == (1, 2)
+
+
+def test_normalize_markdown_preserves_indented_code_and_removes_unsafe_characters() -> None:
+    content = "\u200b    line_one()\r\n    line_\x00two()\n"
+
+    assert _normalize_markdown(content) == "    line_one()\n    line_two()"
 
 
 @pytest.mark.asyncio
@@ -223,3 +262,39 @@ async def test_upload_embeds_and_persists_heading_enriched_content_with_chunk_me
             "h3": None,
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_upload_indexes_reference_labels_but_persists_placeholders_and_metadata() -> None:
+    database = FakeDatabase()
+    embedding_client = FakeEmbeddingClient()
+    service = KnowledgeService(
+        database=database,
+        embedding_client=embedding_client,
+        chunk_size=100,
+        chunk_overlap=0,
+    )
+
+    await service.upload(
+        "请看 [退款说明](https://example.com/refund) 和 ![退款截图](https://example.com/a.png)。"
+    )
+
+    assert embedding_client.requests == [["请看 退款说明 和 退款截图。"]]
+    assert database.chunks[0]["content"] == "请看 @@LINK:link_1@@ 和 @@IMG:img_1@@。"
+    assert database.chunks[0]["fts_tokens"] == "请看 退款说明 和 退款截图。"
+    assert database.chunks[0]["metadata"]["chunk"]["references"] == [
+        {
+            "key": "link_1",
+            "type": "link",
+            "url": "https://example.com/refund",
+            "text": "退款说明",
+            "title": None,
+        },
+        {
+            "key": "img_1",
+            "type": "image",
+            "url": "https://example.com/a.png",
+            "alt": "退款截图",
+            "title": None,
+        },
+    ]

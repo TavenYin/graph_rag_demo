@@ -23,6 +23,7 @@ _VECTOR_SEARCH = text(
     SELECT
         id,
         content,
+        metadata,
         1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
     FROM kb_chunk
     WHERE 1 - (embedding <=> CAST(:embedding AS vector)) > :min_similarity
@@ -36,6 +37,7 @@ _FULLTEXT_SEARCH = text(
     SELECT
         id,
         content,
+        metadata,
         ts_rank_cd(content_tsv, to_tsquery('simple', :query)) AS score
     FROM kb_chunk
     WHERE content_tsv @@ to_tsquery('simple', :query)
@@ -59,6 +61,7 @@ def weighted_rrf(
     _LOGGER.info("rrf_fusion_started rank_list_count=%d top_n=%d", len(rank_lists), top_n)
     scores: dict[int, float] = defaultdict(float)
     contents: dict[int, str] = {}
+    metadata_by_id: dict[int, dict[str, object]] = {}
     matches: dict[int, list[SearchMatch]] = defaultdict(list)
 
     for rank_list, weight in zip(rank_lists, weights, strict=True):
@@ -67,6 +70,7 @@ def weighted_rrf(
         for rank, item in enumerate(rank_list, start=1):
             scores[item.chunk_id] += weight / (RRF_K + rank)
             contents.setdefault(item.chunk_id, item.content)
+            metadata_by_id.setdefault(item.chunk_id, item.metadata)
             matches[item.chunk_id].append(item.match)
 
     ranked_ids = sorted(scores, key=lambda chunk_id: (-scores[chunk_id], chunk_id))
@@ -74,6 +78,7 @@ def weighted_rrf(
         SearchResult(
             chunk_id=chunk_id,
             content=contents[chunk_id],
+            metadata=metadata_by_id[chunk_id],
             score=scores[chunk_id],
             matches=tuple(matches[chunk_id]),
         )
@@ -224,6 +229,7 @@ def _ranked_chunks(
         RankedChunk(
             chunk_id=int(row["id"]),
             content=str(row["content"]),
+            metadata=dict(row.get("metadata") or {}),
             match=SearchMatch(
                 query_index=query_index,
                 query=query,

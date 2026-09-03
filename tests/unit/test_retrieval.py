@@ -19,10 +19,12 @@ def _hit(
     query: str,
     channel: str,
     rank: int,
+    metadata: dict[str, object] | None = None,
 ) -> RankedChunk:
     return RankedChunk(
         chunk_id=chunk_id,
         content=content,
+        metadata=metadata or {},
         match=SearchMatch(
             query_index=query_index,
             query=query,
@@ -46,6 +48,23 @@ def test_weighted_rrf_accumulates_each_matching_list_and_deduplicates_results() 
     assert [result.chunk_id for result in results] == [1, 2]
     assert results[0].score == pytest.approx(2 / 61)
     assert results[0].matches == (vector[0].match, fulltext[0].match)
+
+
+def test_weighted_rrf_preserves_chunk_metadata() -> None:
+    metadata = {"chunk": {"references": [{"key": "link_1"}]}}
+    hit = _hit(
+        1,
+        "@@LINK:link_1@@",
+        query_index=0,
+        query="original",
+        channel="vector",
+        rank=1,
+        metadata=metadata,
+    )
+
+    result = weighted_rrf([[hit]], weights=[1.0], top_n=1)[0]
+
+    assert result.metadata == metadata
 
 
 def test_weighted_rrf_logs_final_scores(caplog) -> None:
@@ -125,7 +144,14 @@ async def test_search_all_collects_all_lists_before_one_global_fusion(monkeypatc
     from graph_rag_demo.services import retrieval
 
     responses = [
-        [{"id": 1, "content": "original vector", "similarity": 0.75}],
+        [
+            {
+                "id": 1,
+                "content": "original vector",
+                "metadata": {"chunk": {"references": [{"key": "link_1"}]}},
+                "similarity": 0.75,
+            }
+        ],
         [{"id": 2, "content": "original fulltext", "score": 0.8}],
         [{"id": 3, "content": "expansion vector", "similarity": 0.65}],
         [{"id": 4, "content": "expansion fulltext", "score": 0.6}],
@@ -149,6 +175,7 @@ async def test_search_all_collects_all_lists_before_one_global_fusion(monkeypatc
     assert calls == [(4, [2.0, 2.0, 1.0, 1.0])]
     assert [result.chunk_id for result in results] == [1, 2, 3, 4]
     assert results[0].matches[0].query == "original question"
+    assert results[0].metadata["chunk"]["references"] == [{"key": "link_1"}]
     assert results[-1].matches[0].query == "expansion question"
 
 

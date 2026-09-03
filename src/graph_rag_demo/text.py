@@ -17,3 +17,15 @@ def clean_text(content: str) -> str:
     cleaned = _HORIZONTAL_WHITESPACE.sub(" ", cleaned)
     cleaned = "\n".join(line.strip() for line in cleaned.split("\n"))
     return _EXCESS_BLANK_LINES.sub("\n\n", cleaned).strip()
+
+
+def normalize_markdown(content: str) -> str:
+    """Remove unsafe characters without changing Markdown-significant whitespace."""
+    if not isinstance(content, str):
+        raise TypeError("content must be a string")
+    normalized = unicodedata.normalize("NFC", content).replace("\r\n", "\n").replace("\r", "\n")
+    normalized = _CONTROL_CHARACTERS.sub("", normalized)
+    normalized = _ZERO_WIDTH_CHARACTERS.sub("", normalized)
+    if not normalized.strip():
+        return ""
+    return normalized.strip("\n\r")

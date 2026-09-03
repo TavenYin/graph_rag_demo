@@ -64,8 +64,16 @@ class FakeRetrievalService:
         return self.results
 
 
-def _result(chunk_id: int, content: str) -> SearchResult:
-    return SearchResult(chunk_id=chunk_id, content=content, score=1.0, matches=())
+def _result(
+    chunk_id: int, content: str, metadata: dict[str, object] | None = None
+) -> SearchResult:
+    return SearchResult(
+        chunk_id=chunk_id,
+        content=content,
+        metadata=metadata or {},
+        score=1.0,
+        matches=(),
+    )
 
 
 @pytest.mark.asyncio
@@ -187,6 +195,42 @@ async def test_answer_escapes_special_characters_in_knowledge_xml() -> None:
 
     answer_content = llm.calls[1][0][-1]["content"]
     assert "&lt;unsafe&gt;&amp; \"quoted\"" in answer_content
+
+
+@pytest.mark.asyncio
+async def test_answer_includes_reference_metadata_next_to_chunk_placeholders() -> None:
+    llm = FakeLLM(
+        expansions=[],
+        answer_payload=AnswerPayload(answer="grounded", used_chunk_ids=[1]),
+    )
+    reference = {
+        "key": "link_1",
+        "type": "link",
+        "url": "https://example.com/refund?a=1&b=2",
+        "text": "退款说明",
+        "title": None,
+    }
+    service = RAGService(
+        llm_client=llm,
+        embedding_client=FakeEmbeddingClient(vectors=[[0.1]]),
+        retrieval_service=FakeRetrievalService(
+            results=[
+                _result(
+                    1,
+                    "请看 @@LINK:link_1@@",
+                    {"chunk": {"references": [reference]}},
+                )
+            ]
+        ),
+        context_token_budget=200,
+    )
+
+    await service.answer("question")
+
+    answer_content = llm.calls[1][0][-1]["content"]
+    assert "@@LINK:link_1@@" in answer_content
+    assert '"key": "link_1"' in answer_content
+    assert "https://example.com/refund?a=1&amp;b=2" in answer_content
 
 
 @pytest.mark.asyncio

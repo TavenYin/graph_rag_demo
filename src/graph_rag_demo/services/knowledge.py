@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from typing import Any
 
 from sqlalchemy import text
@@ -13,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from graph_rag_demo.chunking import split_text
 from graph_rag_demo.clients.embedding import EmbeddingClient
 from graph_rag_demo.db import Database
-from graph_rag_demo.text import clean_text
+from graph_rag_demo.text import normalize_markdown
 from graph_rag_demo.tokenize_fts import tokenize_for_fts
 
 
@@ -71,7 +70,7 @@ class KnowledgeService:
 
         checksum = hashlib.sha256(cleaned_content.encode("utf-8")).hexdigest()
         chunks = split_text(cleaned_content, self._chunk_size, self._chunk_overlap)
-        embeddings = await self._embedding_client.embed([chunk.content for chunk in chunks])
+        embeddings = await self._embedding_client.embed([chunk.search_text for chunk in chunks])
         if len(embeddings) != len(chunks):
             raise ValueError("embedding result count must match chunk count")
 
@@ -81,7 +80,7 @@ class KnowledgeService:
                 "chunk_index": chunk.index,
                 "content": chunk.content,
                 "token_count": chunk.token_count,
-                "fts_tokens": tokenize_for_fts(chunk.content),
+                "fts_tokens": tokenize_for_fts(chunk.search_text),
                 "embedding": _vector_literal(embedding),
                 "metadata": json.dumps({**(metadata or {}), "chunk": chunk.metadata}, ensure_ascii=False),
             }
@@ -111,17 +110,4 @@ def _vector_literal(vector: list[float]) -> str:
 
 
 def _normalize_markdown(content: str) -> str:
-    """Normalize line endings and unsafe characters without changing Markdown indentation."""
-    if not isinstance(content, str):
-        raise TypeError("content must be a string")
-    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
-    if not _contains_markdown_structure(normalized):
-        return clean_text(normalized)
-    return normalized.strip()
-
-
-_MARKDOWN_STRUCTURE = re.compile(r"(?m)^(#{1,6}\s|[-*+]\s|\d+\.\s|>|```|\|.*\|$)")
-
-
-def _contains_markdown_structure(content: str) -> bool:
-    return bool(_MARKDOWN_STRUCTURE.search(content))
+    return normalize_markdown(content)
