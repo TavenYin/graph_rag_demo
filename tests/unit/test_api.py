@@ -78,12 +78,13 @@ def _client(
     )
 
 
-def test_api_exposes_only_the_three_baseline_routes() -> None:
+def test_api_exposes_the_baseline_and_debug_routes() -> None:
     app = create_app(services=ApplicationServices(database=FakeDatabase()))
 
     assert {(route.path, tuple(sorted(route.methods or []))) for route in app.routes} == {
         ("/health", ("GET",)),
         ("/documents", ("POST",)),
+        ("/debug/chunk", ("POST",)),
         ("/ask", ("POST",)),
     }
 
